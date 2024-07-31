@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 )
 
 type Row interface {
@@ -10,20 +9,23 @@ type Row interface {
 }
 
 type PageBuff struct {
-	// how much pages data load
+	// how much pages
 	pages int
 	// one page size
 	pageBuffSize int
-	currPage     int
+	// current pointer to  the table(tracking pointer)
+	currIndex int
+	// currnt page(slice) | this start with 0
+	currPage int
 	// this buffer hold buffSize * maxLoadPage amount of data
-	buff      []Row
+	buff      [][]string
 	buffSize  int
 	startPage []int
 	endPage   []int
 	extra     int
 }
 
-func NewPageBuff(initBuff []Row, pagebuff int) PageBuff {
+func NewPageBuff(initBuff [][]string, pagebuff int) PageBuff {
 	bufflenth := len(initBuff)
 	p := bufflenth / pagebuff
 	return PageBuff{
@@ -31,7 +33,8 @@ func NewPageBuff(initBuff []Row, pagebuff int) PageBuff {
 		buffSize:     bufflenth,
 		pages:        p,
 		pageBuffSize: pagebuff,
-		currPage:     1,
+		currIndex:    0,
+		currPage:     0,
 		startPage:    []int{0, pagebuff - 1},
 		endPage:      []int{((p - 1) * pagebuff), (p * pagebuff) - 1},
 		extra:        bufflenth % pagebuff,
@@ -47,7 +50,7 @@ func NewPageBuff(initBuff []Row, pagebuff int) PageBuff {
 // p.buffSize = 10
 // p.pageBuffSize = 3
 // p.startPage = [7, 9]
-func (p *PageBuff) PushToStart(set []Row) {
+func (p *PageBuff) PushToStart(set [][]string) {
 	if p.pageBuffSize != len(set) {
 		set = set[:p.buffSize]
 	}
@@ -72,7 +75,7 @@ func (p *PageBuff) PushToStart(set []Row) {
 // p.buffSize = 10
 // p.pageBuffSize = 3
 // p.startPage = [3, 5]
-func (p *PageBuff) PushToEnd(set []Row) {
+func (p *PageBuff) PushToEnd(set [][]string) {
 	if p.pageBuffSize != len(set) {
 		set = set[:p.buffSize]
 	}
@@ -96,15 +99,14 @@ func (p *PageBuff) GetPageRealIndex(pageIndex int) (int, int, error) {
 	if pageIndex > p.pages {
 		return 0, 0, errors.New("Invalid page index")
 	}
-	start := (p.startPage[0] + (pageIndex * p.pageBuffSize) - p.pageBuffSize) % p.buffSize
-	end := (p.startPage[1] + (pageIndex * p.pageBuffSize) - p.pageBuffSize) % p.buffSize
+	start := (p.startPage[0] + (pageIndex * p.pageBuffSize)) % p.buffSize
+	end := (p.startPage[1] + (pageIndex * p.pageBuffSize)) % p.buffSize
 	return start, end, nil
 }
 
 func (p *PageBuff) StepPageIndex(page []int, step int) (int, int) {
 	if step < 0 {
 		s := p.pageBuffSize * step
-		fmt.Println(s)
 		return page[0] + s, page[1] + s
 	} else {
 		s := p.pageBuffSize * step
@@ -117,6 +119,32 @@ func (p *PageBuff) UpdatePageBuff(buffSize int) {
 	p.pageBuffSize = buffSize
 	p.pages = buffLenth / buffSize
 	p.extra = buffLenth % buffSize
+}
+
+func (p *PageBuff) ChangePageBuffSize(newSize int) {
+	if newSize <= 0 {
+		p.pageBuffSize = 0
+		return
+	}
+
+	p.pageBuffSize = newSize
+	p.SetPages(p.buffSize / p.pageBuffSize)
+	p.extra = p.buffSize % p.pageBuffSize
+	p.startPage[1] = (p.startPage[0] + (p.pageBuffSize - 1)) % p.buffSize
+	p.pages = p.GetCurrPage()
+	// TODO: continue
+}
+
+func (p *PageBuff) GetCurrPage() int {
+	if p.currIndex >= p.startPage[0] {
+		return (p.currIndex - p.startPage[0]) / p.pageBuffSize
+	} else {
+		return (p.currIndex + p.buffSize - p.startPage[0]) / p.pageBuffSize
+	}
+}
+
+func (p *PageBuff) SetPages(pages int) {
+	p.pages = pages
 }
 
 func IncODec(value int) (bool, int) {
